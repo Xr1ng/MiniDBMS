@@ -29,6 +29,9 @@ cmake-build-*/
 # Debug symbol files
 *.dsym/
 
+# PPT Project
+projects/
+
 # 屏蔽 VS 所有缓存文件
 .vs/
 *.ipch

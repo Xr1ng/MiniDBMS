@@ -92,7 +92,9 @@ export default function Sidebar({ token, isDark, onSelectTable, onTableClick }: 
       })
     )
     try {
-      const { data } = await api.post('/execute', { token, sql: `SHOW TABLES IN ${dbName};` })
+      // CONNECT to the database first, then SHOW TABLES
+      await api.post('/execute', { token, sql: `CONNECT ${dbName};` })
+      const { data } = await api.post('/execute', { token, sql: 'SHOW TABLES;' })
       if (data.success) {
         const tableNames = parseTableList(data.message)
         setDbs((prev) =>
@@ -121,6 +123,7 @@ export default function Sidebar({ token, isDark, onSelectTable, onTableClick }: 
       })
     )
     try {
+      await api.post('/execute', { token, sql: `CONNECT ${dbName};` })
       const { data } = await api.post('/execute', { token, sql: `DESCRIBE ${tableName};` })
       if (data.success) {
         const cols = parseDescribe(data.message)
