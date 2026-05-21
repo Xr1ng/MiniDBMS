@@ -1,7 +1,11 @@
 #include "MiniDB.h"
 #include "ApiServer.h"
+#include <cctype>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
+#include <vector>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -50,6 +54,126 @@ bool endsWithSemicolon(const std::string& s) {
         --i;
     }
     return i > 0 && s[i - 1] == ';';
+}
+
+bool startsWithKeyword(const std::string& text, const std::string& keyword) {
+    if (text.size() < keyword.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < keyword.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(text[i])) !=
+            std::tolower(static_cast<unsigned char>(keyword[i]))) {
+            return false;
+        }
+    }
+    return text.size() == keyword.size() ||
+           std::isspace(static_cast<unsigned char>(text[keyword.size()]));
+}
+
+std::string stripOptionalQuotes(const std::string& s) {
+    if (s.size() >= 2) {
+        char first = s.front();
+        char last = s.back();
+        if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+            return s.substr(1, s.size() - 2);
+        }
+    }
+    return s;
+}
+
+bool parseSourceCommand(const std::string& text, std::string& path) {
+    std::string trimmed = trim(text);
+    if (!trimmed.empty() && trimmed.back() == ';') {
+        trimmed.pop_back();
+        trimmed = trim(trimmed);
+    }
+    if (!startsWithKeyword(trimmed, "source")) {
+        return false;
+    }
+    path = stripOptionalQuotes(trim(trimmed.substr(6)));
+    return true;
+}
+
+std::vector<std::string> splitSqlStatements(const std::string& content) {
+    std::vector<std::string> statements;
+    std::string current;
+    bool inSingleQuote = false;
+    bool inDoubleQuote = false;
+    bool inBacktick = false;
+
+    for (size_t i = 0; i < content.size(); ++i) {
+        char c = content[i];
+        current += c;
+
+        if (c == '\'' && !inDoubleQuote && !inBacktick) {
+            if (inSingleQuote && i + 1 < content.size() && content[i + 1] == '\'') {
+                current += content[++i];
+                continue;
+            }
+            inSingleQuote = !inSingleQuote;
+            continue;
+        }
+        if (c == '"' && !inSingleQuote && !inBacktick) {
+            inDoubleQuote = !inDoubleQuote;
+            continue;
+        }
+        if (c == '`' && !inSingleQuote && !inDoubleQuote) {
+            inBacktick = !inBacktick;
+            continue;
+        }
+        if (c == ';' && !inSingleQuote && !inDoubleQuote && !inBacktick) {
+            std::string stmt = trim(current);
+            if (!stmt.empty()) {
+                statements.push_back(stmt);
+            }
+            current.clear();
+        }
+    }
+
+    std::string tail = trim(current);
+    if (!tail.empty()) {
+        statements.push_back(tail);
+    }
+    return statements;
+}
+
+bool executeStatement(MiniDB& db, const std::string& statement, int depth = 0);
+
+bool executeSourceFile(MiniDB& db, const std::string& path, int depth) {
+    if (depth > 16) {
+        std::cout << "SOURCE nesting is too deep.\n";
+        return false;
+    }
+
+    std::ifstream script(path, std::ios::binary);
+    if (!script) {
+        std::cout << "Cannot open script file: " << path << "\n";
+        return false;
+    }
+
+    std::ostringstream buffer;
+    buffer << script.rdbuf();
+
+    std::cout << "Executing script: " << path << "\n";
+    for (const auto& stmt : splitSqlStatements(buffer.str())) {
+        executeStatement(db, stmt, depth + 1);
+    }
+    std::cout << "Finished script: " << path << "\n";
+    return true;
+}
+
+bool executeStatement(MiniDB& db, const std::string& statement, int depth) {
+    std::string scriptPath;
+    if (parseSourceCommand(statement, scriptPath)) {
+        if (scriptPath.empty()) {
+            std::cout << "SOURCE requires a script file path.\n";
+            return false;
+        }
+        return executeSourceFile(db, scriptPath, depth);
+    }
+
+    db.execute(statement);
+    return true;
 }
 
 } // namespace
@@ -117,7 +241,7 @@ int main(int argc, char* argv[]) {
         statement += line;
 
         if (endsWithSemicolon(statement)) {
-            db.execute(statement);
+            executeStatement(db, statement);
             statement.clear();
         }
     }

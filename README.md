@@ -112,5 +112,6 @@ cd frontend && npm install && npm run build && cd ..
 - 数据目录：`data_<库名>/`，表文件：`*.tbl`（V2 二进制格式，带魔数 `MINIDB` + `0x02`）
 - 用户数据：`system/users.dat`，审计日志：`system/audit.log`
 - 可兼容读取旧版文本格式和 V1 二进制格式的表文件
+- 命令行模式支持 `SOURCE demo.sql;` 按分号逐条执行脚本文件中的 SQL
 - `WHERE` 为单列等值条件；未列出的高级 SQL 未实现
 - 默认角色：ADMIN（全权限）、DBA（数据库/表管理）、USER（基本 CRUD）
